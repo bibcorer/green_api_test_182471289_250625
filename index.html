@@ -27,12 +27,31 @@
       width: 100%;
       margin: 10px 0;
     }
+    .input-group {
+      position: relative;
+    }
+    .toggle-visibility {
+      position: absolute;
+      top: 50%;
+      right: 10px;
+      transform: translateY(-50%);
+      cursor: pointer;
+    }
     textarea {
       height: 500px;
       resize: none;
     }
     .response-section {
       flex: 1;
+    }
+    .response-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .response-toggle {
+      cursor: pointer;
+      font-size: 1.5rem;
     }
     .response-section textarea {
       width: 100%;
@@ -47,17 +66,26 @@
       <h1>GREEN-API Demo</h1>
 
       <label for="idInstance">ID Instance</label>
-      <input type="text" id="idInstance">
+      <div class="input-group">
+        <input type="password" id="idInstance">
+        <span class="toggle-visibility" onclick="toggleVisibility('idInstance', this)">👁️</span>
+      </div>
 
       <label for="apiTokenInstance">API Token</label>
-      <input type="text" id="apiTokenInstance">
+      <div class="input-group">
+        <input type="password" id="apiTokenInstance">
+        <span class="toggle-visibility" onclick="toggleVisibility('apiTokenInstance', this)">👁️</span>
+      </div>
 
       <button onclick="callAPI('getSettings')">getSettings</button>
       <button onclick="callAPI('getStateInstance')">getStateInstance</button>
 
       <hr>
       <label for="phone">Номер телефона (+7...)</label>
-      <input type="text" id="phone">
+      <div class="input-group">
+        <input type="password" id="phone">
+        <span class="toggle-visibility" onclick="toggleVisibility('phone', this)">👁️</span>
+      </div>
 
       <label for="message">Сообщение</label>
       <input type="text" id="message">
@@ -65,18 +93,97 @@
       <button onclick="sendMessage()">sendMessage</button>
 
       <label for="fileUrl">URL файла</label>
-      <input type="text" id="fileUrl">
+      <div class="input-group">
+        <input type="password" id="fileUrl">
+        <span class="toggle-visibility" onclick="toggleVisibility('fileUrl', this)">👁️</span>
+      </div>
 
       <button onclick="sendFileByUrl()">sendFileByUrl</button>
     </div>
 
     <div class="response-section">
-      <h3>Ответ API:</h3>
+      <div class="response-header">
+        <h3>Ответ API:</h3>
+        <span class="response-toggle" onclick="toggleResponseVisibility(this)">👁️</span>
+      </div>
       <textarea id="response" readonly></textarea>
     </div>
   </div>
 
   <script>
+    // Глобальные переменные для хранения состояния ответа
+    let lastFullResponse = null;
+    let isResponseHidden = true;
+
+    function toggleVisibility(inputId, iconElement) {
+      const input = document.getElementById(inputId);
+      if (input.type === "password") {
+        input.type = "text";
+        iconElement.textContent = "✔️";
+      } else {
+        input.type = "password";
+        iconElement.textContent = "👁️";
+      }
+    }
+
+    /**
+     * Создает копию объекта, где все значения заменены на плейсхолдер.
+     * @param {object} data - Исходный объект данных.
+     * @returns {object} - Новый объект со скрытыми данными.
+     */
+    function createHiddenResponse(data) {
+      if (data === null || typeof data !== 'object') {
+        return data; // Возвращаем примитивные типы как есть
+      }
+      
+      const hiddenData = Array.isArray(data) ? [] : {};
+      for (const key in data) {
+        if (Object.prototype.hasOwnProperty.call(data, key)) {
+          hiddenData[key] = '[INFO HIDDEN]';
+        }
+      }
+      return hiddenData;
+    }
+
+    /**
+     * Отображает ответ API в текстовом поле, по умолчанию в скрытом виде.
+     * @param {object} data - Ответ от API.
+     */
+    function displayResponse(data) {
+      lastFullResponse = data; // Сохраняем полный ответ
+      isResponseHidden = true; // Сбрасываем в состояние "скрыто"
+      
+      const hiddenData = createHiddenResponse(data);
+      document.getElementById('response').value = JSON.stringify(hiddenData, null, 2);
+      
+      // Сбрасываем иконку в состояние "показать"
+      const toggleIcon = document.querySelector('.response-toggle');
+      if (toggleIcon) {
+        toggleIcon.textContent = '👁️';
+      }
+    }
+
+    /**
+     * Переключает видимость полного ответа API.
+     * @param {HTMLElement} iconElement - Элемент иконки, на который нажали.
+     */
+    function toggleResponseVisibility(iconElement) {
+      if (!lastFullResponse) return; // Ничего не делать, если ответа еще не было
+
+      isResponseHidden = !isResponseHidden;
+      const responseTextarea = document.getElementById('response');
+
+      if (isResponseHidden) {
+        // Показываем скрытую версию
+        responseTextarea.value = JSON.stringify(createHiddenResponse(lastFullResponse), null, 2);
+        iconElement.textContent = '👁️';
+      } else {
+        // Показываем полную версию
+        responseTextarea.value = JSON.stringify(lastFullResponse, null, 2);
+        iconElement.textContent = '🙈';
+      }
+    }
+
     async function callAPI(method) {
       const id = document.getElementById('idInstance').value;
       const token = document.getElementById('apiTokenInstance').value;
@@ -84,9 +191,13 @@
         getSettings: `https://api.green-api.com/waInstance${id}/getSettings/${token}`,
         getStateInstance: `https://api.green-api.com/waInstance${id}/getStateInstance/${token}`
       };
-      const res = await fetch(urls[method]);
-      const data = await res.json();
-      document.getElementById('response').value = JSON.stringify(data, null, 2);
+      try {
+        const res = await fetch(urls[method]);
+        const data = await res.json();
+        displayResponse(data);
+      } catch (error) {
+        displayResponse({ error: "Ошибка при выполнении запроса", details: error.message });
+      }
     }
 
     async function sendMessage() {
@@ -95,13 +206,17 @@
       const phone = document.getElementById('phone').value;
       const message = document.getElementById('message').value;
 
-      const res = await fetch(`https://api.green-api.com/waInstance${id}/sendMessage/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: phone.replace('+', '') + "@c.us", message })
-      });
-      const data = await res.json();
-      document.getElementById('response').value = JSON.stringify(data, null, 2);
+      try {
+        const res = await fetch(`https://api.green-api.com/waInstance${id}/sendMessage/${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: phone.replace('+', '') + "@c.us", message })
+        });
+        const data = await res.json();
+        displayResponse(data);
+      } catch (error) {
+        displayResponse({ error: "Ошибка при выполнении запроса", details: error.message });
+      }
     }
 
     async function sendFileByUrl() {
@@ -109,14 +224,18 @@
       const token = document.getElementById('apiTokenInstance').value;
       const phone = document.getElementById('phone').value;
       const fileUrl = document.getElementById('fileUrl').value;
-
-      const res = await fetch(`https://api.green-api.com/waInstance${id}/sendFileByUrl/${token}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: phone.replace('+', '') + "@c.us", urlFile: fileUrl, fileName: "file" })
-      });
-      const data = await res.json();
-      document.getElementById('response').value = JSON.stringify(data, null, 2);
+      
+      try {
+        const res = await fetch(`https://api.green-api.com/waInstance${id}/sendFileByUrl/${token}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chatId: phone.replace('+', '') + "@c.us", urlFile: fileUrl, fileName: "file" })
+        });
+        const data = await res.json();
+        displayResponse(data);
+      } catch (error) {
+        displayResponse({ error: "Ошибка при выполнении запроса", details: error.message });
+      }
     }
   </script>
 </body>
